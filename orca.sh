@@ -34,10 +34,12 @@ tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/image-mirror.XXXXXX")
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 paths_file="$tmpdir/paths"
 files="$tmpdir/files"
-all_report="$tmpdir/all_report"
+meta="$tmpdir/meta"
+raw_report="$tmpdir/report"
 : >"$paths_file"
 : >"$files"
-: >"$all_report"
+: >"$meta"
+: >"$raw_report"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -120,14 +122,14 @@ mv "$files.sorted" "$files"
 detect_type() {
     case "$1" in
         [Dd]ockerfile | [Dd]ockerfile.* | [Cc]ontainerfile | [Cc]ontainerfile.* | *.[Dd]ockerfile | *.[Cc]ontainerfile)
-            printf 'dockerfile'
+            printf 'D'
             ;;
         [Cc]ompose.yml | [Cc]ompose.yaml | [Cc]ompose.*.yml | [Cc]ompose.*.yaml | \
             [Dd]ocker-[Cc]ompose.yml | [Dd]ocker-[Cc]ompose.yaml | [Dd]ocker-[Cc]ompose.*.yml | [Dd]ocker-[Cc]ompose.*.yaml)
-            printf 'compose'
+            printf 'C'
             ;;
         *.yml | *.yaml)
-            printf 'kubernetes'
+            printf 'K'
             ;;
         *)
             printf ''
@@ -136,32 +138,25 @@ detect_type() {
 }
 
 scanned=0
-changed_files=0
-written_files=0
-skipped_values=0
-
 while IFS= read -r file; do
     [ -n "$file" ] || continue
     [ -f "$file" ] || continue
-
-    file_type=$(detect_type "${file##*/}")
-    [ -n "$file_type" ] || continue
-    scanned=$((scanned + 1))
-
-    report="$tmpdir/report"
-    out="$tmpdir/out"
-    : >"$report"
-
+    type=$(detect_type "${file##*/}")
+    [ -n "$type" ] || continue
     trailing=0
-    if [ -s "$file" ] && [ "$(tail -c 1 <"$file" | wc -l | tr -d '[:space:]')" -eq 1 ]; then
+    if [ -s "$file" ] && [ "$(tail -c 1 <"$file" | wc -l)" -eq 1 ]; then
         trailing=1
     fi
+    printf '%s %s %s\n' "$type" "$trailing" "$file" >>"$meta"
+    scanned=$((scanned + 1))
+done <"$files"
 
+if [ "$scanned" -gt 0 ]; then
     awk \
         -v strategy="$strategy" \
-        -v filetype="$file_type" \
-        -v trailing="$trailing" \
-        -v report="$report" \
+        -v meta="$meta" \
+        -v outdir="$tmpdir" \
+        -v report="$raw_report" \
         '
         BEGIN {
             mirror_prefix = "m.daocloud.io"
@@ -171,6 +166,11 @@ while IFS= read -r file; do
 
             split("code.forgejo.org codeberg.org container-registry.oracle.com cr.agentgateway.dev cr.kgateway.dev cr.l5d.io cr.weaviate.io dhi.io docker.com docker.elastic.co docker.getcollate.io docker.io docker.osgeo.org docker.stirlingpdf.com gcr.io ghcr.io k8s.gcr.io lscr.io mcr.microsoft.com nvcr.io ollama.ai public.ecr.aws quay.io registry.developers.crunchydata.com registry.gitlab.com registry.heroiclabs.com registry.jujucharms.com registry.k8s.io registry.librechat.ai registry.ollama.ai registry.opensource.zalan.do registry.rocket.chat registry.supertokens.io rocks.canonical.com us-central1-docker.pkg.dev us.gcr.io", supported_list, " ")
             for (i in supported_list) supported[supported_list[i]] = 1
+
+            while ((getline meta_line < meta) > 0) {
+                process_file(substr(meta_line, 5), substr(meta_line, 1, 1), substr(meta_line, 3, 1))
+            }
+            close(meta)
         }
 
         function skip(reason) {
@@ -182,7 +182,7 @@ while IFS= read -r file; do
             return host == mirror_prefix || host ~ /\.m\.daocloud\.io$/
         }
 
-        function first_host(ref) {
+        function first_host(ref,   pos) {
             pos = index(ref, "/")
             return pos == 0 ? ref : substr(ref, 1, pos - 1)
         }
@@ -251,14 +251,16 @@ while IFS= read -r file; do
         }
 
         function report_change(line_no, before, after) {
-            printf "CHANGE %d %s -> %s\n", line_no, before, after > report
+            change_count++
+            printf "CHANGE\t%s\t%d\t%s\t%s\n", current_path, line_no, before, after > report
         }
 
         function report_skip(line_no, image, reason) {
-            printf "SKIP %d %s (%s)\n", line_no, image, reason > report
+            skip_count++
+            printf "SKIP\t%s\t%d\t%s\t%s\n", current_path, line_no, image, reason > report
         }
 
-        function transform_dockerfile(line, line_no,   cr, leading, body, lower, prefix_part, rest, flag, image, suffix, accelerated) {
+        function transform_dockerfile(line, line_no,   cr, leading, body, lower, prefix_part, rest, image, suffix, accelerated) {
             cr = ""
             if (length(line) > 0 && substr(line, length(line), 1) == "\r") {
                 cr = "\r"
@@ -274,20 +276,9 @@ while IFS= read -r file; do
 
             prefix_part = substr(body, 1, 4)
             rest = substr(body, 5)
-            while (match(rest, /^[[:space:]]+/)) {
-                flag = substr(rest, 1, RLENGTH)
-                prefix_part = prefix_part flag
+            while (match(rest, /^([[:space:]]+|--[A-Za-z0-9-]+=[^[:space:]]+)/)) {
+                prefix_part = prefix_part substr(rest, 1, RLENGTH)
                 rest = substr(rest, RLENGTH + 1)
-            }
-            while (match(rest, /^--[A-Za-z0-9-]+=[^[:space:]]+/)) {
-                flag = substr(rest, 1, RLENGTH)
-                prefix_part = prefix_part flag
-                rest = substr(rest, RLENGTH + 1)
-                while (match(rest, /^[[:space:]]+/)) {
-                    flag = substr(rest, 1, RLENGTH)
-                    prefix_part = prefix_part flag
-                    rest = substr(rest, RLENGTH + 1)
-                }
             }
             if (rest == "") return line cr
 
@@ -308,7 +299,7 @@ while IFS= read -r file; do
             return leading prefix_part accelerated suffix cr
         }
 
-        function transform_image_field(line, line_no,   cr, dq, sq, prefix_part, rest, quote, ch, i, image, suffix, accelerated) {
+        function transform_image_field(line, line_no,   cr, dq, sq, stop, prefix_part, rest, quote, i, image, suffix, accelerated) {
             cr = ""
             if (length(line) > 0 && substr(line, length(line), 1) == "\r") {
                 cr = "\r"
@@ -318,6 +309,7 @@ while IFS= read -r file; do
 
             dq = sprintf("%c", 34)
             sq = sprintf("%c", 39)
+            stop = " " sprintf("%c", 9) "#" dq sq
             match(line, /^[[:space:]]*(-[[:space:]]+)?image[[:space:]]*:[[:space:]]*/)
             prefix_part = substr(line, 1, RLENGTH)
             rest = substr(line, RLENGTH + 1)
@@ -328,8 +320,7 @@ while IFS= read -r file; do
             }
 
             for (i = 1; i <= length(rest); i++) {
-                ch = substr(rest, i, 1)
-                if (ch == " " || ch == sprintf("%c", 9) || ch == "#" || ch == dq || ch == sq) break
+                if (index(stop, substr(rest, i, 1)) > 0) break
             }
             if (i > length(rest)) {
                 image = rest
@@ -348,46 +339,57 @@ while IFS= read -r file; do
             return prefix_part quote accelerated suffix cr
         }
 
-        {
-            output = $0
-            if (filetype == "dockerfile") {
-                output = transform_dockerfile($0, NR)
-            } else {
-                output = transform_image_field($0, NR)
+        function process_file(path, type, trailing,   outfile, line, line_no, output) {
+            current_path = path
+            change_count = 0
+            skip_count = 0
+            line_no = 0
+            outfile = outdir "/out." (++file_no)
+
+            while ((getline line < path) > 0) {
+                line_no++
+                output = type == "D" ? transform_dockerfile(line, line_no) : transform_image_field(line, line_no)
+                if (line_no > 1) printf "\n" > outfile
+                printf "%s", output > outfile
             }
-            if (NR > 1) printf "\n"
-            printf "%s", output
+            close(path)
+            if (trailing == 1 && line_no > 0) printf "\n" > outfile
+            if (line_no > 0) close(outfile)
+
+            printf "FILE\t%s\t%s\t%d\n", path, outfile, change_count > report
         }
+        ' </dev/null
+fi
 
-        END {
-            if (trailing == 1 && NR > 0) printf "\n"
-        }
-        ' <"$file" >"$out"
-
-    changes=$(awk '/^CHANGE /{n++} END{print n+0}' "$report")
-    skips=$(awk '/^SKIP /{n++} END{print n+0}' "$report")
-    skipped_values=$((skipped_values + skips))
-
-    while IFS= read -r line; do
-        printf '%s: %s\n' "$file" "$line" >>"$all_report"
-    done <"$report"
-
-    if [ "$changes" -gt 0 ]; then
-        changed_files=$((changed_files + 1))
-        if [ "$mode" = write ]; then
-            cat <"$out" >"$file"
+changed_files=0
+written_files=0
+skipped_values=0
+tab=$(printf '\t')
+while IFS="$tab" read -r kind a b c d; do
+    case $kind in
+        FILE)
+            [ "$c" -gt 0 ] || continue
+            changed_files=$((changed_files + 1))
+            [ "$mode" = write ] || continue
+            cat <"$b" >"$a"
             written_files=$((written_files + 1))
-        fi
-    fi
-done <"$files"
+            ;;
+        SKIP)
+            skipped_values=$((skipped_values + 1))
+            ;;
+    esac
+done <"$raw_report"
 
 label=DRY-RUN
 [ "$mode" = write ] && label=WRITE
 printf '%s strategy=%s: scanned=%d changed=%d written=%d skipped_values=%d\n' \
     "$label" "$strategy" "$scanned" "$changed_files" "$written_files" "$skipped_values"
-while IFS= read -r line; do
-    printf '  %s\n' "$line"
-done <"$all_report"
+while IFS="$tab" read -r kind a b c d; do
+    case $kind in
+        CHANGE) printf '  %s: CHANGE %s %s -> %s\n' "$a" "$b" "$c" "$d" ;;
+        SKIP) printf '  %s: SKIP %s %s (%s)\n' "$a" "$b" "$c" "$d" ;;
+    esac
+done <"$raw_report"
 
 if [ "$mode" != write ] && [ "$changed_files" -gt 0 ]; then
     printf '%s\n' '提示: 加 --write 才会真正写回文件'

@@ -87,8 +87,9 @@ DaoCloud 官方提供了两种镜像加速写法：
 
 ```text
 DRY-RUN strategy=prepend: scanned=3 changed=2 written=0 skipped_values=1
-  Dockerfile:1: nginx:1.27 -> m.daocloud.io/docker.io/library/nginx:1.27
-  deployment.yaml:8: quay.io/prometheus/prometheus:v2.55.0 -> m.daocloud.io/quay.io/prometheus/prometheus:v2.55.0
+  Dockerfile: CHANGE 1 nginx:1.27 -> m.daocloud.io/docker.io/library/nginx:1.27
+  deployment.yaml: CHANGE 8 quay.io/prometheus/prometheus:v2.55.0 -> m.daocloud.io/quay.io/prometheus/prometheus:v2.55.0
+  deployment.yaml: SKIP 9 m.daocloud.io/docker.io/library/busybox (已使用加速前缀)
 提示: 加 --write 才会真正写回文件
 ```
 

@@ -33,6 +33,7 @@ EOF
 run "$tmp/Dockerfile"
 assert_contains "$(cat "$tmp/stdout")" "DRY-RUN"
 assert_contains "$(cat "$tmp/stdout")" "node:20 -> m.daocloud.io/docker.io/library/node:20"
+assert_contains "$(cat "$tmp/stdout")" "CHANGE 1 node:20 ->"
 assert_eq "$(cat "$tmp/Dockerfile")" "$(cat <<'EOF'
 FROM --platform=$BUILDPLATFORM node:20 AS build
 FROM nginx
@@ -120,10 +121,18 @@ run "$tmp/Dockerfile" --strategy replace --write
 assert_contains "$(cat "$tmp/stdout")" "changed=0"
 assert_contains "$(cat "$tmp/stdout")" "(已使用加速前缀)"
 
+printf 'FROM --platform=linux/amd64 --network=none nginx:1.27 AS build\n' >"$tmp/multiflags.Dockerfile"
+run "$tmp/multiflags.Dockerfile" --write
+assert_eq "$(cat "$tmp/multiflags.Dockerfile")" "FROM --platform=linux/amd64 --network=none m.daocloud.io/docker.io/library/nginx:1.27 AS build"
+
 digest="sha256:$(printf '%064d' 0 | tr '0' 'a')"
 printf 'image: nginx@%s\n' "$digest" >"$tmp/digest.yaml"
 run "$tmp/digest.yaml" --write
 assert_eq "$(cat "$tmp/digest.yaml")" "image: m.daocloud.io/docker.io/library/nginx@$digest"
+
+printf 'FROM nginx:1.27' >"$tmp/noeol.Dockerfile"
+run "$tmp/noeol.Dockerfile" --write
+assert_eq "$(od -An -tx1 "$tmp/noeol.Dockerfile" | tr -d ' \n')" "$(printf 'FROM m.daocloud.io/docker.io/library/nginx:1.27' | od -An -tx1 | tr -d ' \n')"
 
 printf 'FROM nginx:1.27\r\n' >"$tmp/crlf.Dockerfile"
 run "$tmp/crlf.Dockerfile" --write
