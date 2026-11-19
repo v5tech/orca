@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="256" viewBox="0 0 960 256">
+  <rect width="960" height="256" fill="#FFFFFF"/>
+  <g transform="translate(16 16)">
+    <circle cx="112" cy="112" r="104" fill="#0F172A"/>
+    <path d="M34 143 C52 88 104 48 180 34 C143 65 123 100 121 139 C98 124 66 126 34 143 Z" fill="#F8FAFC"/>
+    <path d="M57 157 C84 132 119 132 149 160 C119 184 82 184 57 157 Z" fill="#38BDF8"/>
+    <path d="M112 70 L173 112 L112 154" fill="none" stroke="#22D3EE" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="268" y="158" font-family="Inter, Helvetica, Arial, sans-serif" font-size="88" font-weight="700" fill="#0F172A">orca</text>
+  <text x="272" y="202" font-family="Inter, Helvetica, Arial, sans-serif" font-size="28" font-weight="500" fill="#0EA5E9" letter-spacing="2">虎鲸镜像加速</text>
+</svg>

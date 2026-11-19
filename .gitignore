@@ -1,0 +1,10 @@
+# Go build output
+/orca
+/orca.exe
+/dist/
+coverage.out
+
+# Local release artifacts
+*.tar.gz
+*.zip
+SHA256SUMS

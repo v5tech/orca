@@ -16,6 +16,7 @@ concurrency:
 
 env:
   LC_ALL: C
+  GOFLAGS: -mod=readonly
 
 jobs:
   lint:
@@ -25,85 +26,68 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Install ShellCheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: ShellCheck
-        run: shellcheck -s sh orca.sh orca_test.sh
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify modules
+        run: go mod verify
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
 
-  posix:
-    name: POSIX compatibility
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Syntax checks
-        run: |
-          dash -n orca.sh
-          dash -n orca_test.sh
-          bash --posix -n orca.sh
-          bash --posix -n orca_test.sh
-      - name: Run tests with dash as /bin/sh
-        run: |
-          shim="$RUNNER_TEMP/shim"
-          mkdir -p "$shim"
-          ln -s "$(command -v dash)" "$shim/sh"
-          PATH="$shim:$PATH" sh orca_test.sh
-
-  native:
-    name: Native (${{ matrix.os }})
+  go:
+    name: Go (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Run tests
-        run: sh orca_test.sh
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Build
+        run: go build ./...
 
-  containers:
-    name: Container (${{ matrix.image }})
+  coverage:
+    name: Coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: ubuntu:22.04
-            setup: ":"
-          - image: ubuntu:24.04
-            setup: ":"
-          - image: quay.io/centos/centos:stream9
-            setup: "if ! command -v awk >/dev/null || ! command -v find >/dev/null; then if command -v dnf >/dev/null; then dnf install -y gawk findutils >/dev/null; else microdnf install -y gawk findutils >/dev/null; fi; fi"
-          - image: registry.access.redhat.com/ubi9/ubi:latest
-            setup: "if ! command -v awk >/dev/null || ! command -v find >/dev/null; then if command -v dnf >/dev/null; then dnf install -y gawk findutils >/dev/null; else microdnf install -y gawk findutils >/dev/null; fi; fi"
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Run tests in ${{ matrix.image }}
-        env:
-          IMAGE: ${{ matrix.image }}
-          SETUP: ${{ matrix.setup }}
-        run: |
-          docker run --rm -v "$PWD:/work:ro" -w /work "$IMAGE" \
-            sh -c "$SETUP && sh orca_test.sh"
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Race and coverage
+        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out
 
   summary:
     name: Summary
     if: always()
-    needs: [lint, posix, native, containers]
+    needs: [lint, go, coverage]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Write summary
         env:
           LINT: ${{ needs.lint.result }}
-          POSIX: ${{ needs.posix.result }}
-          NATIVE: ${{ needs.native.result }}
-          CONTAINERS: ${{ needs.containers.result }}
+          GO: ${{ needs.go.result }}
+          COVERAGE: ${{ needs.coverage.result }}
         run: |
           {
             echo '## CI summary'
@@ -111,12 +95,10 @@ jobs:
             echo '| Job | Result |'
             echo '| --- | --- |'
             echo "| lint | $LINT |"
-            echo "| posix | $POSIX |"
-            echo "| native | $NATIVE |"
-            echo "| containers | $CONTAINERS |"
+            echo "| go | $GO |"
+            echo "| coverage | $COVERAGE |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$LINT" != "success" ] || [ "$POSIX" != "success" ] || \
-             [ "$NATIVE" != "success" ] || [ "$CONTAINERS" != "success" ]; then
+          if [ "$LINT" != "success" ] || [ "$GO" != "success" ] || [ "$COVERAGE" != "success" ]; then
             exit 1
           fi
