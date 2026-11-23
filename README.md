@@ -17,6 +17,9 @@
 # 预览，不修改文件
 orca .
 
+# 检查模式：发现需要改写时返回退出码 1
+orca -c .
+
 # 写回修改
 orca -w .
 
@@ -32,17 +35,23 @@ orca -v
 ```text
 用法
   orca <路径>...                      预览镜像改写
+  orca -c <路径>...                   检查是否需要改写
   orca -w <路径>...                   写回修改
   orca -s replace <路径>...           使用官方前缀替换表
 
 选项
   -w, --write                         写回文件；默认只预览
+  -c, --check                         检查模式；发现改动时返回非零退出码
   -s, --strategy prepend|replace      镜像策略：prepend 或 replace
   -v, --version                       显示版本
   -h, --help                          显示帮助
 ```
 
 终端支持 ANSI 颜色时，帮助信息会彩色显示。`NO_COLOR=1` 禁用颜色，`FORCE_COLOR=1` 强制启用。
+
+短参数与长参数等价：`-w` = `--write`，`-s` = `--strategy`，`-c` = `--check`。
+
+退出码：`0` 表示无需修改或写回成功；`1` 表示检查模式发现改动；`2` 表示参数或 IO 错误。
 
 ## 镜像策略
 
