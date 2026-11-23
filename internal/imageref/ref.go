@@ -1,6 +1,8 @@
 // Package imageref resolves container image references to DaoCloud mirror addresses.
 package imageref
 
+//go:generate go run ../../cmd/update-allowlist -output allowlist_generated.go
+
 import "strings"
 
 // Strategy selects the official mirror syntax.
@@ -15,33 +17,6 @@ const (
 	// DefaultPrefix is the official recommended prefix.
 	DefaultPrefix = "m.daocloud.io"
 )
-
-var replacements = map[string]string{
-	"docker.elastic.co":  "elastic.m.daocloud.io",
-	"docker.io":          "docker.m.daocloud.io",
-	"dhi.io":             "dhi.m.daocloud.io",
-	"gcr.io":             "gcr.m.daocloud.io",
-	"ghcr.io":            "ghcr.m.daocloud.io",
-	"k8s.gcr.io":         "k8s-gcr.m.daocloud.io",
-	"registry.k8s.io":    "k8s.m.daocloud.io",
-	"mcr.microsoft.com":  "mcr.m.daocloud.io",
-	"nvcr.io":            "nvcr.m.daocloud.io",
-	"quay.io":            "quay.m.daocloud.io",
-	"registry.ollama.ai": "ollama.m.daocloud.io",
-}
-
-var supported = map[string]struct{}{
-	"code.forgejo.org": {}, "codeberg.org": {}, "container-registry.oracle.com": {},
-	"cr.agentgateway.dev": {}, "cr.kgateway.dev": {}, "cr.l5d.io": {}, "cr.weaviate.io": {},
-	"dhi.io": {}, "docker.com": {}, "docker.elastic.co": {}, "docker.getcollate.io": {},
-	"docker.io": {}, "docker.osgeo.org": {}, "docker.stirlingpdf.com": {}, "gcr.io": {},
-	"ghcr.io": {}, "k8s.gcr.io": {}, "lscr.io": {}, "mcr.microsoft.com": {}, "nvcr.io": {},
-	"ollama.ai": {}, "public.ecr.aws": {}, "quay.io": {}, "registry.developers.crunchydata.com": {},
-	"registry.gitlab.com": {}, "registry.heroiclabs.com": {}, "registry.jujucharms.com": {},
-	"registry.k8s.io": {}, "registry.librechat.ai": {}, "registry.ollama.ai": {},
-	"registry.opensource.zalan.do": {}, "registry.rocket.chat": {}, "registry.supertokens.io": {},
-	"rocks.canonical.com": {}, "us-central1-docker.pkg.dev": {}, "us.gcr.io": {},
-}
 
 const invalidChars = " \t$<>[]{}*?!|%&,"
 

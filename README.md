@@ -129,7 +129,7 @@ Docker Hub 简写会先规范化：`nginx` → `docker.io/library/nginx`。tag �
 ## 限制
 
 - 镜像需要在 DaoCloud [白名单](https://github.com/DaoCloud/public-image-mirror/blob/a195786892746d03f11d3ef1ed360b703e7ea91b/allows.txt)中；服务有缓存和限流，见[官方说明](https://github.com/DaoCloud/public-image-mirror/issues/2328)。
-- 内置公开 registry 列表是 `allows.txt` 的一次快照；官方新增 registry 后，需要更新代码。
+- 内置公开 registry 列表来自官方 `allows.txt` 与 README 替换表，通过生成文件固定版本；上游变更后需重新生成。
 - 这是静态文件改写工具，不是运行时 Webhook；Helm 模板里的动态值不会被改写。
 
 ## 开发
@@ -145,6 +145,18 @@ gofmt -l .
 ```bash
 go build -o orca ./cmd/orca
 ```
+
+更新 registry 数据：
+
+```bash
+# 使用默认固定的官方 commit 重新生成
+go generate ./internal/imageref
+
+# 指定官方仓库的新 ref
+go run ./cmd/update-allowlist -ref <commit-or-branch> -output internal/imageref/allowlist_generated.go
+```
+
+生成器读取官方 `allows.txt` 与 README 的 registry 前缀替换表，输出到 `internal/imageref/allowlist_generated.go`。
 
 发布构建注入版本：
 
