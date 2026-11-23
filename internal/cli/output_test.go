@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,32 +14,6 @@ func writeOutputFixture(t *testing.T, name string, content string) string {
 		t.Fatal(err)
 	}
 	return path
-}
-
-func TestRunJSONOutput(t *testing.T) {
-	path := writeOutputFixture(t, "Dockerfile", "FROM nginx:1.27\n")
-
-	stdout, _, err := execute("--json", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(stdout, "{") {
-		t.Fatalf("stdout = %q", stdout)
-	}
-
-	var report jsonReport
-	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
-		t.Fatal(err)
-	}
-	if report.Mode != "DRY-RUN" || report.Scanned != 1 || report.Changed != 1 {
-		t.Fatalf("report = %+v", report)
-	}
-	if len(report.Events) != 1 || report.Events[0].Kind != "change" {
-		t.Fatalf("events = %+v", report.Events)
-	}
-	if len(report.Files) != 1 || !report.Files[0].Changed || report.Files[0].Written {
-		t.Fatalf("files = %+v", report.Files)
-	}
 }
 
 func TestRunDiffOutput(t *testing.T) {
@@ -64,63 +36,22 @@ func TestRunDiffOutput(t *testing.T) {
 	}
 }
 
-func TestRunJSONWithDiff(t *testing.T) {
-	path := writeOutputFixture(t, "Dockerfile", "FROM nginx:1.27\n")
-
-	stdout, _, err := execute("--json", "--diff", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var report jsonReport
-	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
-		t.Fatal(err)
-	}
-	if len(report.Files) != 1 || !strings.Contains(report.Files[0].Diff, "@@ -1,1 +1,1 @@") {
-		t.Fatalf("files = %+v", report.Files)
-	}
-}
-
-func TestRunJSONCheckReturnsErrChangesNeeded(t *testing.T) {
-	path := writeOutputFixture(t, "Dockerfile", "FROM nginx:1.27\n")
-
-	stdout, _, err := execute("--json", "--check", path)
-	if !errors.Is(err, ErrChangesNeeded) {
-		t.Fatalf("error = %v; want ErrChangesNeeded", err)
-	}
-	var report jsonReport
-	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
-		t.Fatal(err)
-	}
-	if report.Mode != "CHECK" || report.Changed != 1 {
-		t.Fatalf("report = %+v", report)
-	}
-}
-
-func TestRunJSONWrite(t *testing.T) {
-	path := writeOutputFixture(t, "Dockerfile", "FROM nginx:1.27\n")
-
-	stdout, _, err := execute("--json", "--write", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var report jsonReport
-	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
-		t.Fatal(err)
-	}
-	if report.Mode != "WRITE" || report.Written != 1 {
-		t.Fatalf("report = %+v", report)
-	}
-	if len(report.Files) != 1 || !report.Files[0].Written {
-		t.Fatalf("files = %+v", report.Files)
-	}
-}
-
-func TestRunHelpShowsJSONAndDiffFlags(t *testing.T) {
+func TestRunHelpUsesEnterpriseWording(t *testing.T) {
 	_, stderr, err := execute("-h")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr, "-j, --json") || !strings.Contains(stderr, "-d, --diff") {
-		t.Fatalf("stderr = %q", stderr)
+	if !strings.Contains(stderr, "\n策略\n") {
+		t.Fatalf("strategy section missing: %q", stderr)
+	}
+	for _, part := range []string{
+		"分析目标路径并输出变更计划",
+		"输出统一差异",
+		"应用变更至目标文件",
+		"策略",
+	} {
+		if !strings.Contains(stderr, part) {
+			t.Fatalf("missing %q in %q", part, stderr)
+		}
 	}
 }

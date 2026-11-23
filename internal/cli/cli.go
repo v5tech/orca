@@ -2,8 +2,6 @@
 package cli
 
 import (
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -21,9 +19,6 @@ const terminalLogo = `  ___    ____     ____      _
 | | | | | |_) | | |       / _ \
 | |_| | |  _ <  | |___   / ___ \    https://github.com/v5tech/orca
  \___/  |_| \_\  \____| /_/   \_\   虎鲸镜像加速 · 跨平台镜像地址重写工具`
-
-// ErrChangesNeeded indicates that check mode found image references to rewrite.
-var ErrChangesNeeded = errors.New("changes needed")
 
 const (
 	colorReset = "\x1b[0m"
@@ -77,34 +72,6 @@ type summary struct {
 	changed int
 	written int
 	skips   int
-}
-
-type jsonEvent struct {
-	Path   string `json:"path"`
-	Line   int    `json:"line"`
-	Kind   string `json:"kind"`
-	Before string `json:"before,omitempty"`
-	After  string `json:"after,omitempty"`
-	Image  string `json:"image,omitempty"`
-	Reason string `json:"reason,omitempty"`
-}
-
-type jsonFile struct {
-	Path    string `json:"path"`
-	Changed bool   `json:"changed"`
-	Written bool   `json:"written"`
-	Diff    string `json:"diff,omitempty"`
-}
-
-type jsonReport struct {
-	Mode          string      `json:"mode"`
-	Strategy      string      `json:"strategy"`
-	Scanned       int         `json:"scanned"`
-	Changed       int         `json:"changed"`
-	Written       int         `json:"written"`
-	SkippedValues int         `json:"skipped_values"`
-	Events        []jsonEvent `json:"events"`
-	Files         []jsonFile  `json:"files"`
 }
 
 func splitDiffLines(text string) []string {
@@ -165,8 +132,6 @@ func Run(args []string, stdout, stderr io.Writer) error {
 	var showVersion bool
 	var showHelp bool
 	var write bool
-	var check bool
-	var asJSON bool
 	var showDiff bool
 	var strategyValue string
 
@@ -176,10 +141,6 @@ func Run(args []string, stdout, stderr io.Writer) error {
 	flags.BoolVar(&showHelp, "h", false, "显示帮助")
 	flags.BoolVar(&write, "write", false, "写回文件")
 	flags.BoolVar(&write, "w", false, "写回文件")
-	flags.BoolVar(&check, "check", false, "检查是否存在需要改写的镜像")
-	flags.BoolVar(&check, "c", false, "检查是否存在需要改写的镜像")
-	flags.BoolVar(&asJSON, "json", false, "以 JSON 格式输出结果")
-	flags.BoolVar(&asJSON, "j", false, "以 JSON 格式输出结果")
 	flags.BoolVar(&showDiff, "diff", false, "显示改写差异")
 	flags.BoolVar(&showDiff, "d", false, "显示改写差异")
 	flags.StringVar(&strategyValue, "strategy", string(imageref.StrategyPrepend), "镜像策略：prepend 或 replace")
@@ -190,21 +151,21 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, paint(colored, colorLogo, terminalLogo))
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, paint(colored, colorHead, "用法"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  orca <路径>...                      预览镜像改写，不修改文件"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  orca -c <路径>...                   检查是否需要改写"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  orca -d <路径>...                   显示改写差异"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  orca -j <路径>...                   JSON 输出"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  orca -w <路径>...                   写回修改"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  orca -s replace <路径>...           使用官方前缀替换表"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  orca <路径>...                      分析目标路径并输出变更计划（dry-run）"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  orca -d <路径>...                   输出改写差异"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  orca -s replace -d <路径>...        使用前缀替换策略输出差异"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  orca -w <路径>...                   应用变更至目标文件"))
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, paint(colored, colorHead, "选项"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  -w, --write                         写回文件；默认只预览"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  -c, --check                         检查模式；发现改动时返回非零退出码"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  -d, --diff                          显示改写差异"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  -j, --json                          输出 JSON 报告"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  -s, --strategy prepend|replace      镜像策略：prepend 或 replace"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  -v, --version                       显示版本"))
-		fmt.Fprintln(stderr, paint(colored, colorBody, "  -h, --help                          显示帮助"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  -d, --diff                          输出统一差异"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  -s, --strategy prepend|replace      指定镜像加速策略"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  -w, --write                         应用变更至目标文件"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  -v, --version                       显示版本信息"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  -h, --help                          显示帮助信息"))
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, paint(colored, colorHead, "策略"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  prepend   在原完整引用前添加 m.daocloud.io/（默认）"))
+		fmt.Fprintln(stderr, paint(colored, colorBody, "  replace   按官方映射替换 registry 前缀"))
 	}
 
 	if err := flags.Parse(args); err != nil {
@@ -224,10 +185,6 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 
-	if check && write {
-		return fmt.Errorf("check cannot be combined with write")
-	}
-
 	strategy := imageref.Strategy(strategyValue)
 	if strategy != imageref.StrategyPrepend && strategy != imageref.StrategyReplace {
 		return fmt.Errorf("unknown strategy %q: use prepend or replace", strategyValue)
@@ -238,9 +195,7 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("missing path")
 	}
 
-	missingPaths := 0
 	files, err := discover.Files(flags.Args(), func(message string) {
-		missingPaths++
 		fmt.Fprintln(stderr, message)
 	})
 	if err != nil {
@@ -249,17 +204,8 @@ func Run(args []string, stdout, stderr io.Writer) error {
 
 	total := summary{}
 	label := "DRY-RUN"
-	if check {
-		label = "CHECK"
-	}
 	if write {
 		label = "WRITE"
-	}
-	report := jsonReport{
-		Mode:     label,
-		Strategy: string(strategy),
-		Events:   []jsonEvent{},
-		Files:    []jsonFile{},
 	}
 	details := &strings.Builder{}
 	diffs := &strings.Builder{}
@@ -277,18 +223,8 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		result := rewrite.Rewrite(string(original), kind, strategy)
 		total.scanned++
 		total.skips += result.SkipCount()
-		fileReport := jsonFile{Path: path}
 
 		for _, event := range result.Events {
-			report.Events = append(report.Events, jsonEvent{
-				Path:   path,
-				Line:   event.Line,
-				Kind:   event.Kind,
-				Before: event.Before,
-				After:  event.After,
-				Image:  event.Image,
-				Reason: event.Reason,
-			})
 			if event.IsChange() {
 				fmt.Fprintf(details, "  %s: CHANGE %d %s -> %s\n", path, event.Line, event.Before, event.After)
 				continue
@@ -296,53 +232,30 @@ func Run(args []string, stdout, stderr io.Writer) error {
 			fmt.Fprintf(details, "  %s: SKIP %d %s (%s)\n", path, event.Line, event.Image, event.Reason)
 		}
 
-		if result.ChangeCount() > 0 {
-			fileReport.Changed = true
-			total.changed++
-			if showDiff {
-				fileReport.Diff = renderUnifiedDiff(path, string(original), result.Text, result.Events)
-				diffs.WriteString(fileReport.Diff)
+		if result.ChangeCount() == 0 {
+			continue
+		}
+		total.changed++
+		if showDiff {
+			diffs.WriteString(renderUnifiedDiff(path, string(original), result.Text, result.Events))
+		}
+		if write {
+			if err := os.WriteFile(path, []byte(result.Text), mode); err != nil {
+				return err
 			}
-			if write {
-				if err := os.WriteFile(path, []byte(result.Text), mode); err != nil {
-					return err
-				}
-				fileReport.Written = true
-				total.written++
-			}
-		}
-		report.Files = append(report.Files, fileReport)
-	}
-
-	report.Scanned = total.scanned
-	report.Changed = total.changed
-	report.Written = total.written
-	report.SkippedValues = total.skips
-
-	if asJSON {
-		encoder := json.NewEncoder(stdout)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(report); err != nil {
-			return err
-		}
-	} else {
-		fmt.Fprintf(stdout, "%s strategy=%s: scanned=%d changed=%d written=%d skipped_values=%d\n",
-			label, strategy, total.scanned, total.changed, total.written, total.skips)
-		io.WriteString(stdout, details.String())
-		if diffs.Len() > 0 {
-			fmt.Fprintln(stdout)
-			io.WriteString(stdout, diffs.String())
-		}
-		if !write && !check && total.changed > 0 {
-			fmt.Fprintln(stdout, "提示: 加 --write 才会真正写回文件")
+			total.written++
 		}
 	}
 
-	if check && missingPaths > 0 {
-		return fmt.Errorf("missing path")
+	fmt.Fprintf(stdout, "%s strategy=%s: scanned=%d changed=%d written=%d skipped_values=%d\n",
+		label, strategy, total.scanned, total.changed, total.written, total.skips)
+	io.WriteString(stdout, details.String())
+	if diffs.Len() > 0 {
+		fmt.Fprintln(stdout)
+		io.WriteString(stdout, diffs.String())
 	}
-	if check && total.changed > 0 {
-		return ErrChangesNeeded
+	if !write && total.changed > 0 {
+		fmt.Fprintln(stdout, "提示: 加 --write 才会真正写回文件")
 	}
 	return nil
 }

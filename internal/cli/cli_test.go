@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,66 +219,5 @@ func TestRunSkipsScratchAndTemplates(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(path); string(got) != original {
 		t.Fatalf("file changed: %q", got)
-	}
-}
-
-func TestRunCheckReturnsErrChangesNeeded(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "Dockerfile")
-	original := "FROM nginx:1.27\n"
-	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	stdout, _, err := execute("--check", path)
-	if !errors.Is(err, ErrChangesNeeded) {
-		t.Fatalf("error = %v; want ErrChangesNeeded", err)
-	}
-	if !strings.Contains(stdout, "CHECK strategy=prepend: scanned=1 changed=1 written=0") {
-		t.Fatalf("stdout = %q", stdout)
-	}
-	if got, _ := os.ReadFile(path); string(got) != original {
-		t.Fatalf("check changed file: %q", got)
-	}
-}
-
-func TestRunCheckFailsOnMissingPath(t *testing.T) {
-	missing := filepath.Join(t.TempDir(), "missing")
-	_, stderr, err := execute("--check", missing)
-	if err == nil || !strings.Contains(err.Error(), "missing path") {
-		t.Fatalf("error = %v", err)
-	}
-	if !strings.Contains(stderr, "跳过不存在的路径") {
-		t.Fatalf("stderr = %q", stderr)
-	}
-}
-
-func TestRunCheckClean(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "Dockerfile")
-	original := "FROM m.daocloud.io/docker.io/library/nginx:1.27\n"
-	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	stdout, _, err := execute("-c", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stdout, "CHECK strategy=prepend: scanned=1 changed=0 written=0") {
-		t.Fatalf("stdout = %q", stdout)
-	}
-}
-
-func TestRunCheckRejectsWrite(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "Dockerfile")
-	if err := os.WriteFile(path, []byte("FROM nginx:1.27\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, _, err := execute("--check", "--write", path)
-	if err == nil || !strings.Contains(err.Error(), "check cannot be combined with write") {
-		t.Fatalf("error = %v", err)
 	}
 }

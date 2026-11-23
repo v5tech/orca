@@ -14,25 +14,19 @@
 从 [GitHub Releases](https://github.com/v5tech/orca/releases) 下载对应平台二进制：
 
 ```bash
-# 预览，不修改文件
+# 分析目标路径并输出变更计划（dry-run）
 orca .
 
-# 检查模式：发现需要改写时返回退出码 1
-orca -c .
-
-# 预览改写差异
+# 输出改写差异
 orca -d .
 
-# 输出 JSON 报告
-orca -j .
+# 使用前缀替换策略输出差异
+orca -s replace -d ./manifests
 
-# 写回修改
+# 应用变更至目标文件
 orca -w .
 
-# 使用官方 registry 前缀替换表
-orca -s replace -w ./manifests
-
-# 查看版本
+# 显示版本信息
 orca -v
 ```
 
@@ -40,30 +34,18 @@ orca -v
 
 ```text
 用法
-  orca <路径>...                      预览镜像改写
-  orca -c <路径>...                   检查是否需要改写
-  orca -d <路径>...                   显示改写差异
-  orca -j <路径>...                   输出 JSON 报告
-  orca -w <路径>...                   写回修改
-  orca -s replace <路径>...           使用官方前缀替换表
+  orca <路径>...                      分析目标路径并输出变更计划（dry-run）
+  orca -d <路径>...                   输出改写差异
+  orca -s replace -d <路径>...        使用前缀替换策略输出差异
+  orca -w <路径>...                   应用变更至目标文件
 
 选项
-  -w, --write                         写回文件；默认只预览
-  -c, --check                         检查模式；发现改动时返回非零退出码
-  -d, --diff                          显示改写差异
-  -j, --json                          输出 JSON 报告
-  -s, --strategy prepend|replace      镜像策略：prepend 或 replace
-  -v, --version                       显示版本
-  -h, --help                          显示帮助
+  -d, --diff                          输出统一差异
+  -s, --strategy prepend|replace      指定镜像加速策略
+  -w, --write                         应用变更至目标文件
+  -v, --version                       显示版本信息
+  -h, --help                          显示帮助信息
 ```
-
-终端支持 ANSI 颜色时，帮助信息会彩色显示。`NO_COLOR=1` 禁用颜色，`FORCE_COLOR=1` 强制启用。
-
-短参数与长参数等价：`-w` = `--write`，`-s` = `--strategy`，`-c` = `--check`，`-d` = `--diff`，`-j` = `--json`。
-
-`--json` 输出 `mode`、`strategy`、`scanned`、`changed`、`written`、`skipped_values`、`events` 与 `files`；配合 `--diff` 时 `files[].diff` 包含差异文本。
-
-退出码：`0` 表示无需修改或写回成功；`1` 表示检查模式发现改动；`2` 表示参数或 IO 错误。
 
 ## 镜像策略
 
